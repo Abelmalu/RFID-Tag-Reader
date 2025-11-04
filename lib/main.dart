@@ -78,7 +78,7 @@ class HomeScreen extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: const [
                           Text(
-                            'Tag & Scan',
+                            'Woldiya University',
                             style: TextStyle(
                               color: kLightTextColor,
                               fontWeight: FontWeight.bold,
@@ -112,8 +112,16 @@ class HomeScreen extends StatelessWidget {
                         children: [
                           _buildScanOptionCard(
                             icon: Icons.qr_code_scanner_rounded,
-                            title: 'Scan QR Codeee',
+                            title: 'Scan QR Code',
                             subtitle: 'Open camera to scan a barcode',
+                            onTap: () => print('qr code tapped'),
+                          ),
+                          // Using the 30 logical pixels you added
+                          const SizedBox(height: 30),
+                          _buildScanOptionCard(
+                            icon: Icons.nfc_rounded,
+                            title: 'Scan RFID Tag',
+                            subtitle: 'Tap an NFC/RFID tag to read',
                             onTap: () {
                               Navigator.push(
                                 context,
@@ -122,14 +130,6 @@ class HomeScreen extends StatelessWidget {
                                 ),
                               );
                             },
-                          ),
-                          // Using the 30 logical pixels you added
-                          const SizedBox(height: 30),
-                          _buildScanOptionCard(
-                            icon: Icons.nfc_rounded,
-                            title: 'Scan RFID Tag',
-                            subtitle: 'Tap an NFC/RFID tag to read',
-                            onTap: () => print('Navigating to RFID Scanner...'),
                           ),
                         ],
                       ),

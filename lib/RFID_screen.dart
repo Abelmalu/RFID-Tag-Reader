@@ -1,5 +1,27 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:nfc_manager/nfc_manager.dart';
+import 'package:nfc_manager/nfc_manager.dart';
+import 'package:nfc_manager/nfc_manager_android.dart';
+import 'dart:typed_data';
+
+// Color Palette
+const Color kDarkBackgroundColor = Color(0xFF1A2B3C);
+const Color kAppBarColor = Color(0xFF223A53); // Distinct color for AppBar
+const Color kPrimaryAccentColor = Color(0xFF00C6AE);
+const Color kLightTextColor = Colors.white;
+const Color kSecondaryTextColor = Colors.white70;
+const Color kErrorColor = Color(0xFFE57373); // Light red for errors/not found
+
+void main() {
+  // Wrapping with MaterialApp to make it runnable
+  runApp(
+    const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: NfcReaderScreen(),
+    ),
+  );
+}
 
 class NfcReaderScreen extends StatefulWidget {
   const NfcReaderScreen({Key? key}) : super(key: key);
@@ -10,13 +32,55 @@ class NfcReaderScreen extends StatefulWidget {
 
 class _NfcReaderScreenState extends State<NfcReaderScreen>
     with TickerProviderStateMixin {
+  // State for NFC results
+  String? _tagUid;
+  Map<String, String>? _studentData;
+  bool _isNfcAvailable = true;
+  bool _isScanning = true;
+
+  // Animation Controllers
   late AnimationController _popController;
   late Animation<double> _scaleAnimation;
   late AnimationController _orbitController;
 
+  // Mock Student Data
+  final List<Map<String, String>> students = [
+    {
+      'id': 'C6:65:D3:EA',
+      'full_name': 'ABEBE TASEW',
+      'batch': 'Batch 2025',
+      'department': 'Computer Science',
+    },
+    {
+      'id': '79:68:DB:9B',
+      'full_name': 'MASRESHA SMITH',
+      'batch': 'Batch 2025',
+      'department': 'Information Technology',
+    },
+    {
+      'id': 'F9:CE:9D:9B',
+      'full_name': 'TOMAS SEFIW',
+      'batch': 'Batch 2024',
+      'department': 'Software Engineering',
+    },
+  ];
+
+  // Utility function to convert tag UID bytes to Hex string
+  String _bytesToHexString(Uint8List bytes) {
+    if (bytes.isEmpty) return 'N/A';
+    return bytes
+        .map((e) => e.toRadixString(16).padLeft(2, '0'))
+        .join(':')
+        .toUpperCase();
+  }
+
+  // --- NFC Management ---
+
   @override
   void initState() {
     super.initState();
+    _checkNfcAvailability();
+    _startNfcSession();
 
     // 1. Controller for the phone "pop" animation
     _popController = AnimationController(
@@ -36,111 +100,105 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
     )..repeat(); // Repeats in one direction
   }
 
+  void _checkNfcAvailability() async {
+    bool isAvailable = await NfcManager.instance.isAvailable();
+    if (mounted) {
+      setState(() {
+        _isNfcAvailable = isAvailable;
+      });
+    }
+  }
+
+  void _startNfcSession() {
+    // Check if NFC is available before starting the session
+    if (!_isNfcAvailable) return;
+
+    NfcManager.instance
+        .startSession(
+          pollingOptions: {
+            NfcPollingOption.iso14443,
+            NfcPollingOption.iso15693,
+            NfcPollingOption.iso18092,
+          },
+          onDiscovered: (NfcTag tag) async {
+            // We do NOT call NfcManager.instance.stopSession() here,
+            // which keeps the session running for continuous listening.
+
+            // 1. Process Tag ID (using MifareClassicAndroid as example)
+            final MifareClassicAndroid? mifareClassicCard =
+                MifareClassicAndroid.from(tag);
+            final rawUidBytes = mifareClassicCard?.tag.id as Uint8List?;
+            final tagUid = rawUidBytes != null
+                ? _bytesToHexString(rawUidBytes)
+                : null;
+
+            // 2. Look up student data
+            Map<String, String>? student;
+            if (tagUid != null) {
+              try {
+                student = students.firstWhere((s) => s['id'] == tagUid);
+              } catch (e) {
+                // Student not found, student remains null
+                student = null;
+              }
+            }
+
+            // 3. Update UI state
+            if (mounted) {
+              setState(() {
+                _tagUid = tagUid;
+                _studentData = student;
+                _isScanning = false;
+                // Stop animations when a result is displayed
+                _popController.stop();
+                _orbitController.stop();
+              });
+            }
+          },
+        )
+        .catchError((error) {
+          // Handle session start errors here
+          print("NFC Session Error: $error");
+        });
+  }
+
+  void _resetScanning() {
+    if (mounted) {
+      setState(() {
+        _tagUid = null;
+        _studentData = null;
+        _isScanning = true;
+      });
+      // Restart animations
+      _popController.repeat(reverse: true);
+      _orbitController.repeat();
+    }
+  }
+
   @override
   void dispose() {
+    // IMPORTANT: Stop the session when the screen is disposed
+    NfcManager.instance.stopSession().catchError(
+      (e) => print('Error stopping NFC session during dispose: $e'),
+    );
+
     _popController.dispose();
     _orbitController.dispose();
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      // Use a dark blue/grey color for the background
-      backgroundColor: const Color(0xFF1A2B3C),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Read Tag',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-      ),
-      body: Stack(
-        children: [
-          // Decorative elements (sparkles)
-          _buildSparkle(top: 150, left: 50),
-          _buildSparkle(top: 200, right: 70),
-          _buildSparkle(bottom: 250, left: 60),
+  // --- Widget Builders ---
 
-          // Decorative dots (bottom right)
-          _buildDottedPattern(),
-
-          // Main content
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.start,
-              children: [
-                const SizedBox(height: 40),
-                // The instruction text
-                const Text(
-                  'Tap on the back of the\ndevice with an NFC\nCompatible tag',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFF00C6AE), // Teal color from image
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 100),
-
-                // --- Animation Rig ---
-                SizedBox(
-                  height: 300,
-                  width: 300,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // 1. The Phone (with Pop Animation)
-                      ScaleTransition(
-                        scale: _scaleAnimation,
-                        child: _buildPhoneIcon(),
-                      ),
-
-                      // 2. The Orbiting Tag (with Positional Animation)
-                      AnimatedBuilder(
-                        animation: _orbitController,
-                        builder: (context, child) {
-                          // Calculate position in a circle
-                          final angle = _orbitController.value * 2 * math.pi;
-                          const radius = 110.0;
-                          final offset = Offset(
-                            math.cos(angle) * radius,
-                            math.sin(angle) * radius,
-                          );
-                          return Transform.translate(
-                            offset: offset,
-                            child: child,
-                          );
-                        },
-                        child: _buildNfcTag(),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Helper widget for the phone icon
+  // Helper widget for the phone icon (Scanning animation)
   Widget _buildPhoneIcon() {
     return Container(
       width: 140,
       height: 280,
       decoration: BoxDecoration(
-        color: const Color(0xFF00C6AE), // Teal fill
+        color: kPrimaryAccentColor, // Teal fill
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: const Color(0xFF0A1A2A),
+          color: kDarkBackgroundColor,
           width: 8,
         ), // Dark border
       ),
@@ -151,7 +209,7 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
           width: 60,
           height: 10,
           decoration: BoxDecoration(
-            color: const Color(0xFF0A1A2A), // Dark notch
+            color: kDarkBackgroundColor, // Dark notch
             borderRadius: BorderRadius.circular(5),
           ),
         ),
@@ -159,33 +217,29 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
     );
   }
 
-  // Helper widget for the white NFC tag
+  // Helper widget for the white NFC tag (Scanning animation)
   Widget _buildNfcTag() {
     return Container(
       width: 70,
       height: 70,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: kLightTextColor,
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
+            color: kPrimaryAccentColor.withOpacity(0.4),
+            blurRadius: 15,
+            spreadRadius: 3,
           ),
         ],
       ),
       child: const Center(
-        child: Icon(
-          Icons.contactless, // A good icon for NFC/tags
-          color: Color(0xFF00C6AE), // Teal icon
-          size: 45,
-        ),
+        child: Icon(Icons.contactless, color: kPrimaryAccentColor, size: 45),
       ),
     );
   }
 
-  // Helper for the sparkles
+  // Helper for the sparkles (background decorations)
   Widget _buildSparkle({
     double? top,
     double? bottom,
@@ -198,8 +252,8 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
       left: left,
       right: right,
       child: Icon(
-        Icons.abc,
-        color: const Color(0xFF00C6AE).withOpacity(0.7),
+        Icons.star_rounded,
+        color: kPrimaryAccentColor.withOpacity(0.4),
         size: 20,
       ),
     );
@@ -210,157 +264,293 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
     return Positioned(
       bottom: 40,
       right: 40,
-      child: SizedBox(
-        width: 80,
-        height: 80,
-        child: GridView.builder(
-          itemCount: 64,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 8,
-            crossAxisSpacing: 5,
-            mainAxisSpacing: 5,
-          ),
-          itemBuilder: (context, index) => Container(
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
-              shape: BoxShape.circle,
+      child: Opacity(
+        opacity: 0.3,
+        child: SizedBox(
+          width: 80,
+          height: 80,
+          child: GridView.builder(
+            itemCount: 64,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 8,
+              crossAxisSpacing: 5,
+              mainAxisSpacing: 5,
+            ),
+            itemBuilder: (context, index) => Container(
+              decoration: BoxDecoration(
+                color: kLightTextColor.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
             ),
           ),
         ),
       ),
     );
   }
+
+  // --- Main Build Method ---
+  @override
+  Widget build(BuildContext context) {
+    Widget mainContent;
+
+    if (!_isNfcAvailable) {
+      mainContent = _buildNfcNotAvailable();
+    } else if (_isScanning) {
+      mainContent = _buildScanningAnimation();
+    } else {
+      mainContent = _buildResultView();
+    }
+
+    return Scaffold(
+      backgroundColor: kDarkBackgroundColor,
+      appBar: AppBar(
+        // Use the distinct color for the AppBar
+        backgroundColor: kAppBarColor,
+        elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: kLightTextColor),
+          // Example of navigating back
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'Woldiya University',
+          style: TextStyle(color: kLightTextColor, fontWeight: FontWeight.bold),
+        ),
+      ),
+      body: Stack(
+        children: [
+          // Decorative elements (sparkles and dots)
+          _buildSparkle(top: 150, left: 50),
+          _buildSparkle(top: 200, right: 70),
+          _buildSparkle(bottom: 250, left: 60),
+          _buildDottedPattern(),
+
+          // Main content based on state
+          Center(child: mainContent),
+        ],
+      ),
+    );
+  }
+
+  // --- Content Widgets based on State ---
+
+  Widget _buildNfcNotAvailable() {
+    return Padding(
+      padding: const EdgeInsets.all(32.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.phonelink_erase_rounded,
+            color: kErrorColor,
+            size: 80,
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'NFC Not Available',
+            style: TextStyle(
+              color: kErrorColor,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'This device does not support NFC or it is currently disabled. Please enable it and restart the app.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: kSecondaryTextColor, fontSize: 16),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScanningAnimation() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.start,
+      children: [
+        const SizedBox(height: 40),
+        const Text(
+          'Tap a tag on the back of the\ndevice to read data.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: kPrimaryAccentColor,
+            fontSize: 22,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 100),
+        SizedBox(
+          height: 300,
+          width: 300,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // 1. The Phone (Pop Animation)
+              ScaleTransition(scale: _scaleAnimation, child: _buildPhoneIcon()),
+              // 2. The Orbiting Tag (Positional Animation)
+              AnimatedBuilder(
+                animation: _orbitController,
+                builder: (context, child) {
+                  final angle = _orbitController.value * 2 * math.pi;
+                  const radius = 110.0;
+                  final offset = Offset(
+                    math.cos(angle) * radius,
+                    math.sin(angle) * radius,
+                  );
+                  return Transform.translate(offset: offset, child: child);
+                },
+                child: _buildNfcTag(),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildResultView() {
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ScanResultCard(tagUid: _tagUid, studentData: _studentData),
+          const SizedBox(height: 30),
+          ElevatedButton(
+            onPressed: _resetScanning,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: kPrimaryAccentColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              elevation: 8,
+            ),
+            child: const Text(
+              'Scan New Tag',
+              style: TextStyle(
+                color: kDarkBackgroundColor,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
+// --- Result Card Widget (Nested to keep the main file clean) ---
 
+class ScanResultCard extends StatelessWidget {
+  final String? tagUid;
+  final Map<String, String>? studentData;
 
+  const ScanResultCard({
+    required this.tagUid,
+    required this.studentData,
+    Key? key,
+  }) : super(key: key);
 
+  @override
+  Widget build(BuildContext context) {
+    final bool found = studentData != null && studentData!.isNotEmpty;
 
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: kAppBarColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: found ? kPrimaryAccentColor : kErrorColor,
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: (found ? kPrimaryAccentColor : kErrorColor).withOpacity(0.3),
+            blurRadius: 15,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                found ? Icons.check_circle_rounded : Icons.warning_rounded,
+                color: found ? kPrimaryAccentColor : kErrorColor,
+                size: 36,
+              ),
+              const SizedBox(width: 16),
+              Text(
+                found ? 'Tag Data Found' : 'Record Not Found',
+                style: TextStyle(
+                  color: found ? kPrimaryAccentColor : kErrorColor,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 30, color: kSecondaryTextColor),
+          _buildInfoRow('UID:', tagUid ?? 'Unknown Tag', kSecondaryTextColor),
+          const SizedBox(height: 10),
+          if (found) ...[
+            _buildInfoRow('Name:', studentData!['full_name']!, kLightTextColor),
+            const SizedBox(height: 10),
+            _buildInfoRow(
+              'Department:',
+              studentData!['department']!,
+              kSecondaryTextColor,
+            ),
+            const SizedBox(height: 10),
+            _buildInfoRow(
+              'Batch:',
+              studentData!['batch']!,
+              kSecondaryTextColor,
+            ),
+          ] else
+            const Text(
+              'No corresponding student record found for this tag ID in the local database.',
+              style: TextStyle(color: kSecondaryTextColor, fontSize: 16),
+            ),
+        ],
+      ),
+    );
+  }
 
-
-
-
-// import 'package:flutter/material.dart';
-// import 'package:flutter_animate/flutter_animate.dart';
-
-// void main() {
-//   runApp(const MaterialApp(home: NFCTagScreen()));
-// }
-
-// class NFCTagScreen extends StatefulWidget {
-//   const NFCTagScreen({super.key});
-
-//   @override
-//   State<NFCTagScreen> createState() => _NFCTagScreenState();
-// }
-
-// class _NFCTagScreenState extends State<NFCTagScreen>
-//     with SingleTickerProviderStateMixin {
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       backgroundColor: const Color(0xff0e2433),
-//       body: SafeArea(
-//         child: Column(
-//           children: [
-//             // Title Bar
-//             Padding(
-//               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-//               child: Row(
-//                 children: const [
-//                   Icon(Icons.arrow_back_ios, color: Colors.white),
-//                   SizedBox(width: 10),
-//                   Text(
-//                     "Read Tag",
-//                     style: TextStyle(
-//                         color: Colors.white,
-//                         fontSize: 22,
-//                         fontWeight: FontWeight.bold),
-//                   ),
-//                 ],
-//               ),
-//             ),
-//             const SizedBox(height: 50),
-
-//             // Animated Area
-//             Expanded(
-//               child: Center(
-//                 child: Stack(
-//                   alignment: Alignment.center,
-//                   children: [
-//                     // Rotating background white circle
-//                     Container(
-//                       width: 250,
-//                       height: 250,
-//                       decoration: BoxDecoration(
-//                         color: Colors.white.withOpacity(0.1),
-//                         shape: BoxShape.circle,
-//                       ),
-//                     )
-//                         .animate(
-//                           onPlay: (controller) => controller.repeat(),
-//                         )
-//                         .rotate(
-//                             duration: 10.seconds,
-//                             curve: Curves.linear), // slow rotation
-
-//                     // Phone image popping in/out
-//                     Container(
-//                       width: 180,
-//                       height: 320,
-//                       decoration: BoxDecoration(
-//                         color: const Color(0xff1dc6b8),
-//                         borderRadius: BorderRadius.circular(25),
-//                       ),
-//                       child: const Icon(Icons.nfc, size: 60, color: Colors.white),
-//                     )
-//                         .animate(
-//                           onPlay: (controller) => controller.repeat(reverse: true),
-//                         )
-//                         .scale(
-//                           duration: 2.seconds,
-//                           begin: const Offset(0.95, 0.95),
-//                           end: const Offset(1.05, 1.05),
-//                           curve: Curves.easeInOut,
-//                         ),
-
-//                     // NFC chip illustration
-//                     Positioned(
-//                       bottom: 40,
-//                       right: 30,
-//                       child: Container(
-//                         width: 80,
-//                         height: 80,
-//                         decoration: BoxDecoration(
-//                           color: Colors.white.withOpacity(0.8),
-//                           borderRadius: BorderRadius.circular(20),
-//                         ),
-//                         child: const Icon(Icons.wifi_tethering,
-//                             color: Color(0xff1dc6b8), size: 40),
-//                       ),
-//                     ),
-//                   ],
-//                 ),
-//               ),
-//             ),
-
-//             // Instruction Text
-//             Padding(
-//               padding: const EdgeInsets.symmetric(horizontal: 24.0),
-//               child: Text(
-//                 "Tap on the back of the device with an NFC Compatible tag",
-//                 textAlign: TextAlign.center,
-//                 style: TextStyle(
-//                     color: Colors.cyanAccent.withOpacity(0.9),
-//                     fontSize: 18,
-//                     fontWeight: FontWeight.w500),
-//               ),
-//             ),
-//             const SizedBox(height: 100),
-//           ],
-//         ),
-//       ),
-//     );
-//   }
-// }
-
+  Widget _buildInfoRow(String label, String value, Color valueColor) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 100,
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: kSecondaryTextColor,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              color: valueColor,
+              fontSize: 16,
+              fontWeight: FontWeight.normal,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
