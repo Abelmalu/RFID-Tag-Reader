@@ -1,132 +1,281 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:nfc_manager/nfc_manager.dart';
-import 'package:nfc_manager/nfc_manager_android.dart';
+import 'package:flutter/services.dart';
+import 'RFID_screen.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(MyApp());
 }
+
+// --- Color Palette ---
+const Color kDarkBackgroundColor = Color(0xFF1A2B3C);
+const Color kPrimaryAccentColor = Color(0xFF00C6AE);
+const Color kLightTextColor = Colors.white;
+const Color kSecondaryTextColor = Colors.white70;
+
+// Custom colors for the AppBar gradient to ensure visual distinction
+const Color kAppBarTopColor = Color(0xFF223A53);
+const Color kAppBarBottomColor = Color(0xFF152A40);
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'NFC/RFID Reader',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: ' Home Screen'),
+    return const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: HomeScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-  String tagInfo = 'Scan an NFC tag';
-
-  String _bytesToHexString(Uint8List bytes) {
-    if (bytes.isEmpty) return 'N/A';
-    return bytes
-        .map((e) => e.toRadixString(16).padLeft(2, '0'))
-        .join(':')
-        .toUpperCase();
-  }
-
-  void _incrementCounter() async {
-    final hellow = "hellow ";
-    print(hellow);
-
-    // Check the availability of NFC on the current device.
-
-    // Start the session.
-    NfcManager.instance.startSession(
-      pollingOptions: {
-        NfcPollingOption.iso14443,
-        NfcPollingOption.iso15693,
-        NfcPollingOption.iso18092,
-      }, // ISO standard cards
-      onDiscovered: (NfcTag tag) async {
-        print("this is the data");
-
-        final MifareClassicAndroid? mifareClassicCard =
-            MifareClassicAndroid.from(tag);
-        print("the raw id ");
-        print(mifareClassicCard?.tag.id);
-        print("the  id as UINT8lIST ");
-        final rawUidBytes = mifareClassicCard?.tag.id as Uint8List;
-        print("this is the id changed to hexadecimal");
-        final tagUid = _bytesToHexString(rawUidBytes);
-        print(tagUid);
-        print(mifareClassicCard?.size);
-
-        // Stop the session when no longer needed.
-        await NfcManager.instance.stopSession();
-      },
-    );
-  }
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
+    // Light status bar icons
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
+
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+      backgroundColor: kDarkBackgroundColor,
+      body: Stack(
+        children: [
+          // --- Background Decorative Elements ---
+          _buildSparkle(top: 100, left: 50),
+          _buildSparkle(top: 300, right: 70),
+          _buildSparkle(bottom: 200, left: 60),
+          _buildDottedPattern(bottom: 40, right: 40),
+
+          // --- FIX: Wrap the Column in Positioned.fill ---
+          // This gives the Column a defined size within the Stack,
+          // which allows the Expanded widget to work correctly.
+          Positioned.fill(
+            child: Column(
+              children: [
+                // --- Custom Curved AppBar ---
+                ClipPath(
+                  clipper: AppBarClipper(),
+                  child: Container(
+                    height: 160,
+                    width: double.infinity,
+                    decoration: const BoxDecoration(
+                      // UPDATED: Using distinct colors for a separated AppBar
+                      gradient: LinearGradient(
+                        colors: [kAppBarTopColor, kAppBarBottomColor],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 10,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: SafeArea(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Text(
+                            'Tag & Scan',
+                            style: TextStyle(
+                              color: kLightTextColor,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 22,
+                            ),
+                          ),
+                          SizedBox(height: 10),
+                          Text(
+                            'What would you like to scan today?',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: kSecondaryTextColor,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // --- Centered Cards in Remaining Body ---
+                Expanded(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildScanOptionCard(
+                            icon: Icons.qr_code_scanner_rounded,
+                            title: 'Scan QR Codeee',
+                            subtitle: 'Open camera to scan a barcode',
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const NfcReaderScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          // Using the 30 logical pixels you added
+                          const SizedBox(height: 30),
+                          _buildScanOptionCard(
+                            icon: Icons.nfc_rounded,
+                            title: 'Scan RFID Tag',
+                            subtitle: 'Tap an NFC/RFID tag to read',
+                            onTap: () => print('Navigating to RFID Scanner...'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+    );
+  }
+
+  // --- Reusable Scan Option Card ---
+  Widget _buildScanOptionCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: Ink(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          color: kPrimaryAccentColor.withOpacity(0.1),
+          border: Border.all(color: kPrimaryAccentColor, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              // Using the more intense shadow you added
+              color: kPrimaryAccentColor.withOpacity(0.25),
+              blurRadius: 12,
+              spreadRadius: 3,
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 48, color: kPrimaryAccentColor),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: kLightTextColor,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: kSecondaryTextColor,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              color: kSecondaryTextColor,
+              size: 18,
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
+
+  // --- Sparkles (background decorations) ---
+  Widget _buildSparkle({
+    double? top,
+    double? bottom,
+    double? left,
+    double? right,
+  }) {
+    return Positioned(
+      top: top,
+      bottom: bottom,
+      left: left,
+      right: right,
+      child: Icon(
+        // Using the star icon you chose
+        Icons.star_rounded,
+        color: kPrimaryAccentColor.withOpacity(0.4),
+        size: 18,
+      ),
+    );
+  }
+
+  // --- Dotted corner pattern ---
+  Widget _buildDottedPattern({double? bottom, double? right}) {
+    return Positioned(
+      bottom: bottom,
+      right: right,
+      child: Opacity(
+        opacity: 0.3,
+        child: SizedBox(
+          width: 80,
+          height: 80,
+          child: GridView.builder(
+            itemCount: 64,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 8,
+              crossAxisSpacing: 5,
+              mainAxisSpacing: 5,
+            ),
+            itemBuilder: (context, index) => Container(
+              decoration: BoxDecoration(
+                color: kLightTextColor.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// --- Custom Clipper for Smooth Curved AppBar ---
+class AppBarClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    path.lineTo(0, size.height - 30);
+    // This creates the nice dip in the center
+    path.quadraticBezierTo(
+      size.width / 2,
+      size.height + 30, // Control point is *below* the line
+      size.width,
+      size.height - 30, // End point
+    );
+    path.lineTo(size.width, 0);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
 }
