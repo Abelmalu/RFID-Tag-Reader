@@ -1,16 +1,25 @@
-# rfid_reader
+# 🏫 University Cafeteria Tracking & Attendance App
 
 A new Flutter project.
 
-## Getting Started
+## Project Description
 
-This project is a starting point for a Flutter application.
+A Flutter-based mobile application designed to streamline university cafeteria management and student attendance tracking. The app enables students to check meal schedules, view available menu items, and verify attendance using RFID or NFC-based ID cards.
 
-A few resources to get you started if this is your first Flutter project:
+🚀 Features
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+📅 Meal Scheduling – View daily and weekly cafeteria menus.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+🎟️ Smart Check-In – Record attendance using NFC/RFID student cards.
+
+🔐 Secure Authentication – Role-based login for students and cafeteria staff.
+
+📊 Real-Time Reports – Track attendance data and cafeteria usage statistics.
+
+🧾 Digital Receipts – Automatically log meal consumption per student.
+
+🌐 Offline Support – Works even without a constant internet connection.
+
+
+
+
