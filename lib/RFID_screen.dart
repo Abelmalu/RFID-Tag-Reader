@@ -127,7 +127,7 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
             // 1. Process Tag ID (using MifareClassicAndroid as example)
             final MifareClassicAndroid? mifareClassicCard =
                 MifareClassicAndroid.from(tag);
-            final rawUidBytes = mifareClassicCard?.tag.id as Uint8List?;
+            final rawUidBytes = mifareClassicCard?.tag.id;
             final tagUid = rawUidBytes != null
                 ? _bytesToHexString(rawUidBytes)
                 : null;
