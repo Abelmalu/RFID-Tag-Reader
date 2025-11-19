@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'RFID_screen.dart';
-import 'registration_screen.dart';
+import 'welcome_screen.dart';
 
 void main() {
   runApp(MyApp());
