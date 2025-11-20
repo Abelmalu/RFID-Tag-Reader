@@ -5,10 +5,11 @@ import 'device_service.dart';
 import 'home_screen.dart';
 
 // Constants
-const Color kPrimaryAccentColor = Color(0xFF00C6AE);
 const Color kDarkBackgroundColor = Color(0xFF1A2B3C);
+const Color kPrimaryAccentColor = Color(0xFF00C6AE);
 const Color kLightTextColor = Colors.white;
 const Color kSecondaryTextColor = Colors.white70;
+const Color kAppBarTopColor = Color(0xFF15222E);
 const String _baseUrl = 'http://127.0.0.1:8080'; // <-- CHANGE THIS TO YOUR API
 
 class SerialNumberAuthScreen extends StatefulWidget {
@@ -20,7 +21,7 @@ class SerialNumberAuthScreen extends StatefulWidget {
 
 class _SerialNumberAuthScreenState extends State<SerialNumberAuthScreen> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _snController = TextEditingController();
+  final TextEditingController _serialNumberController = TextEditingController();
 
   bool _isLoading = false;
   String? _errorMessage;
@@ -36,7 +37,7 @@ class _SerialNumberAuthScreenState extends State<SerialNumberAuthScreen> {
       _errorMessage = null;
     });
 
-    final serialNumber = _snController.text;
+    final serialNumber = _serialNumberController.text;
 
     try {
       final uri = Uri.parse('$_baseUrl/api/device/verify');
@@ -94,6 +95,47 @@ class _SerialNumberAuthScreenState extends State<SerialNumberAuthScreen> {
     }
   }
 
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String labelText,
+    required String hintText,
+    required IconData icon,
+    TextInputType keyboardType = TextInputType.text,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      style: const TextStyle(color: kLightTextColor),
+      decoration: InputDecoration(
+        labelText: labelText,
+        hintText: hintText,
+        hintStyle: TextStyle(color: kSecondaryTextColor.withOpacity(0.6)),
+        prefixIcon: Icon(icon, color: kPrimaryAccentColor),
+        labelStyle: const TextStyle(color: kSecondaryTextColor),
+        filled: true,
+        fillColor: kDarkBackgroundColor.withOpacity(0.5),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: kPrimaryAccentColor, width: 1),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: kPrimaryAccentColor, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.redAccent, width: 1),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.redAccent, width: 2),
+        ),
+      ),
+      validator: validator,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -125,31 +167,13 @@ class _SerialNumberAuthScreenState extends State<SerialNumberAuthScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                TextFormField(
-                  controller: _snController,
-                  style: const TextStyle(color: kLightTextColor),
-                  decoration: InputDecoration(
-                    labelText: 'Serial Number',
-                    hintText: 'e.g., ABC-123',
-                    prefixIcon: const Icon(
-                      Icons.qr_code_2_rounded,
-                      color: kPrimaryAccentColor,
-                    ),
-                    filled: true,
-                    fillColor: kDarkBackgroundColor.withOpacity(0.5),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(
-                        color: kPrimaryAccentColor,
-                        width: 2,
-                      ),
-                    ),
-                  ),
+                _buildTextField(
+                  controller: _serialNumberController,
+                  labelText: 'Serial Number',
+                  hintText: 'e.g., SN292',
+                  icon: Icons.code_rounded,
                   validator: (value) =>
-                      value!.isEmpty ? 'Serial Number is required' : null,
+                      value!.isEmpty ? 'Please enter a serial number' : null,
                 ),
                 const SizedBox(height: 30),
 

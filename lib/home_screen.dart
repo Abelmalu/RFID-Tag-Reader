@@ -69,7 +69,7 @@ class HomeScreen extends StatelessWidget {
                 title: 'Cafeteria Scan',
                 subtitle: 'Navigate to the food transaction processing.',
                 icon: Icons.restaurant_menu_rounded,
-                destination: const CafeteriaScreen(),
+                destination: const NfcReaderScreen(),
               ),
               const SizedBox(height: 20),
               _buildModeButton(
