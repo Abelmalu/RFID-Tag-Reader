@@ -1,257 +1,652 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'RFID_screen.dart';
-import 'welcome_screen.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io';
 
-void main() {
-  runApp(MyApp());
-}
-
-// --- Color Palette ---
+// --- Global Constants for Colors and Storage Keys ---
 const Color kDarkBackgroundColor = Color(0xFF1A2B3C);
 const Color kPrimaryAccentColor = Color(0xFF00C6AE);
 const Color kLightTextColor = Colors.white;
 const Color kSecondaryTextColor = Colors.white70;
+const Color kAppBarTopColor = Color(0xFF15222E);
 
-// Custom colors for the AppBar gradient to ensure visual distinction
-const Color kAppBarTopColor = Color(0xFF223A53);
-const Color kAppBarBottomColor = Color(0xFF152A40);
+// API Base URL (Must be configured for your environment)
+// NOTE: For local testing, change this to your actual server IP, e.g., 192.168.1.5:8080
+const String _baseUrl = 'http://127.0.0.1:8080';
+
+// Shared Preferences Keys
+const String _kDeviceApiKey = 'device_api_key'; // <-- The new, revocable key
+const String _kSelectedCafeteriaId = 'selected_cafeteria_id';
+const String _kSelectedCafeteriaName = 'selected_cafeteria_name';
+
+// --------------------------------------------------------
+
+void main() {
+  runApp(const MyApp());
+}
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: RegistrationScreen(),
+    return MaterialApp(
+      title: 'Decoupled Device App',
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: kDarkBackgroundColor,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: kAppBarTopColor,
+          titleTextStyle: TextStyle(
+            color: kLightTextColor,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+      home: const AppInitializationWrapper(),
     );
   }
 }
 
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({Key? key}) : super(key: key);
+// --------------------------------------------------------
+/// Device Service to handle retrieving the stored API Key.
+// --------------------------------------------------------
+class DeviceService {
+  static Future<String?> getDeviceApiKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_kDeviceApiKey);
+  }
+
+  static Future<void> saveDeviceApiKey(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kDeviceApiKey, key);
+  }
+
+  static Future<void> clearApiKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kDeviceApiKey);
+  }
+}
+
+/// --------------------------------------------------------
+/// 1. App Initialization Wrapper (Checks the API Key to skip SN entry)
+/// --------------------------------------------------------
+class AppInitializationWrapper extends StatelessWidget {
+  const AppInitializationWrapper({super.key});
+
+  Future<String> _getInitialRoute() async {
+    final apiKey = await DeviceService.getDeviceApiKey();
+    final prefs = await SharedPreferences.getInstance();
+    final selectedId = prefs.getInt(_kSelectedCafeteriaId);
+
+    if (apiKey == null || apiKey.isEmpty) {
+      // If the API Key is missing, we must show the SN input screen
+      return '/activation';
+    }
+
+    if (selectedId == null) {
+      // If API Key exists, but no cafeteria set, go to selection
+      return '/selection';
+    }
+
+    return '/home'; // Fully set up
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Light status bar icons
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
+    return FutureBuilder<String>(
+      future: _getInitialRoute(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(color: kPrimaryAccentColor),
+            ),
+          );
+        }
 
+        final initialRoute = snapshot.data ?? '/activation';
+
+        switch (initialRoute) {
+          case '/activation':
+            return const ActivationScreen();
+          case '/selection':
+            return const CafeteriaSelectionScreen();
+          case '/home':
+            return const DeviceHome();
+          default:
+            return const ActivationScreen();
+        }
+      },
+    );
+  }
+}
+
+// --------------------------------------------------------
+/// 2. Device Activation Screen (One-time Serial Number Entry & Key Exchange)
+/// --------------------------------------------------------
+class ActivationScreen extends StatefulWidget {
+  const ActivationScreen({Key? key}) : super(key: key);
+
+  @override
+  State<ActivationScreen> createState() => _ActivationScreenState();
+}
+
+class _ActivationScreenState extends State<ActivationScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _snController = TextEditingController();
+
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  Future<void> _activateDevice() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final String serialNumber = _snController.text;
+
+      // Endpoint: Send the SN, receive the Device API Key
+      final uri = Uri.parse('$_baseUrl/api/admin/activate_and_get_key');
+
+      final response = await http.post(
+        uri,
+        headers: <String, String>{
+          'Content-Type': 'application/json; charset=UTF-8',
+        },
+        body: jsonEncode(<String, dynamic>{"serial_number": serialNumber}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = jsonDecode(response.body);
+        final newApiKey = responseData['device_api_key'] as String?;
+
+        if (newApiKey != null && newApiKey.isNotEmpty) {
+          // SUCCESS: Save the revocable API Key for all future requests.
+          await DeviceService.saveDeviceApiKey(newApiKey);
+
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const CafeteriaSelectionScreen(),
+              ),
+            );
+          }
+        } else {
+          setState(() {
+            _errorMessage =
+                'Activation failed: Server did not return a valid API Key.';
+          });
+        }
+      } else {
+        final errorJson = jsonDecode(response.body);
+        setState(() {
+          _errorMessage =
+              errorJson['message'] ??
+              'Activation failed. Serial number rejected.';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage =
+            'Connection Error. Check your network or API server. Details: $e';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String labelText,
+    required String hintText,
+    required IconData icon,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      style: const TextStyle(color: kLightTextColor),
+      decoration: InputDecoration(
+        labelText: labelText,
+        hintText: hintText,
+        hintStyle: TextStyle(color: kSecondaryTextColor.withOpacity(0.6)),
+        prefixIcon: Icon(icon, color: kPrimaryAccentColor),
+        labelStyle: const TextStyle(color: kSecondaryTextColor),
+        filled: true,
+        fillColor: kDarkBackgroundColor.withOpacity(0.5),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: kPrimaryAccentColor, width: 1),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: kPrimaryAccentColor, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.redAccent, width: 1),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.redAccent, width: 2),
+        ),
+      ),
+      validator: validator,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kDarkBackgroundColor,
-      body: Stack(
-        children: [
-          // --- Background Decorative Elements ---
-          _buildSparkle(top: 100, left: 50),
-          _buildSparkle(top: 300, right: 70),
-          _buildSparkle(bottom: 200, left: 60),
-          _buildDottedPattern(bottom: 40, right: 40),
-
-          // --- FIX: Wrap the Column in Positioned.fill ---
-          // This gives the Column a defined size within the Stack,
-          // which allows the Expanded widget to work correctly.
-          Positioned.fill(
+      appBar: AppBar(title: const Text('Device Activation (One-Time Setup)')),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Form(
+            key: _formKey,
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // --- Custom Curved AppBar ---
-                ClipPath(
-                  clipper: AppBarClipper(),
-                  child: Container(
-                    height: 160,
-                    width: double.infinity,
-                    decoration: const BoxDecoration(
-                      // UPDATED: Using distinct colors for a separated AppBar
-                      gradient: LinearGradient(
-                        colors: [kAppBarTopColor, kAppBarBottomColor],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 10,
-                          offset: Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: SafeArea(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Text(
-                            'Woldiya University',
-                            style: TextStyle(
-                              color: kLightTextColor,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 22,
-                            ),
-                          ),
-                          SizedBox(height: 10),
-                          Text(
-                            'What would you like to scan today?',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: kSecondaryTextColor,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
+                const Icon(
+                  Icons.key_rounded,
+                  size: 80,
+                  color: kPrimaryAccentColor,
+                ),
+                const SizedBox(height: 30),
+                Text(
+                  'Activate Device',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: kLightTextColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Enter the device\'s physical Serial Number to authorize this hardware.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: kSecondaryTextColor),
+                ),
+                const SizedBox(height: 20),
+
+                _buildTextField(
+                  controller: _snController,
+                  labelText: 'Serial Number',
+                  hintText: 'e.g., SN292 (Printed on device)',
+                  icon: Icons.qr_code_2_rounded,
+                  validator: (value) => value!.isEmpty
+                      ? 'Please enter the device\'s Serial Number'
+                      : null,
+                ),
+                const SizedBox(height: 30),
+
+                if (_errorMessage != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 20.0),
+                    child: Text(
+                      _errorMessage!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.redAccent,
+                        fontSize: 14,
                       ),
                     ),
                   ),
-                ),
-
-                // --- Centered Cards in Remaining Body ---
-                Expanded(
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _buildScanOptionCard(
-                            icon: Icons.qr_code_scanner_rounded,
-                            title: 'Scan QR Code',
-                            subtitle: 'Open camera to scan a barcode',
-                            onTap: () => print('qr code tapped'),
+                ElevatedButton.icon(
+                  onPressed: _isLoading ? null : _activateDevice,
+                  icon: _isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            color: kDarkBackgroundColor,
+                            strokeWidth: 2,
                           ),
-                          // Using the 30 logical pixels you added
-                          const SizedBox(height: 30),
-                          _buildScanOptionCard(
-                            icon: Icons.nfc_rounded,
-                            title: 'Scan RFID Tag',
-                            subtitle: 'Tap an NFC/RFID tag to read',
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const NfcReaderScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                        ],
+                        )
+                      : const Icon(Icons.lock_open_rounded, size: 24),
+                  label: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 12.0,
+                      horizontal: 16.0,
+                    ),
+                    child: Text(
+                      _isLoading ? 'Activating...' : 'Activate Device',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    foregroundColor: kDarkBackgroundColor,
+                    backgroundColor: kPrimaryAccentColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 8,
+                    shadowColor: kPrimaryAccentColor.withOpacity(0.5),
                   ),
                 ),
               ],
             ),
           ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+/// --------------------------------------------------------
+/// 3. Cafeteria Selection Screen (Uses the Device API Key in Headers)
+/// --------------------------------------------------------
+class CafeteriaSelectionScreen extends StatefulWidget {
+  const CafeteriaSelectionScreen({super.key});
+
+  @override
+  State<CafeteriaSelectionScreen> createState() =>
+      _CafeteriaSelectionScreenState();
+}
+
+class _CafeteriaSelectionScreenState extends State<CafeteriaSelectionScreen> {
+  List<Map<String, dynamic>> _cafeterias = [];
+  bool _isDataLoading = true;
+  int? _selectedCafeteriaId;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _getCafeterias();
+  }
+
+  Future<void> _getCafeterias() async {
+    setState(() {
+      _isDataLoading = true;
+      _errorMessage = null;
+    });
+
+    final apiKey = await DeviceService.getDeviceApiKey();
+    if (apiKey == null) {
+      _handleUnauthorizedAccess();
+      return;
+    }
+
+    try {
+      final uri = Uri.parse('$_baseUrl/api/cafeterias');
+
+      // Sending the API Key with every request for validation
+      final response = await http.get(
+        uri,
+        headers: {
+          'X-Device-API-Key': apiKey, // <-- Using the safe, revocable key
+        },
+      );
+
+      // Security check: If the backend rejects the API Key, we reset and show an error.
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        _handleUnauthorizedAccess();
+        return;
+      }
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        List<Map<String, dynamic>> rawList = List<Map<String, dynamic>>.from(
+          decoded as List,
+        );
+
+        List<Map<String, dynamic>> safeList = rawList.map((cafeteria) {
+          int id = 0;
+          if (cafeteria.containsKey('id')) {
+            final idValue = cafeteria['id'];
+            if (idValue is int) {
+              id = idValue;
+            } else if (idValue is String) {
+              id = int.tryParse(idValue) ?? 0;
+            }
+          }
+          return Map<String, dynamic>.from(cafeteria)..['id'] = id;
+        }).toList();
+
+        setState(() {
+          _cafeterias = safeList.where((c) => c['id'] != 0).toList();
+          _isDataLoading = false;
+        });
+      } else {
+        final errorJson = jsonDecode(response.body);
+        setState(() {
+          _errorMessage =
+              'Error fetching cafeterias (Status: ${response.statusCode}): ${errorJson['message'] ?? 'Unknown API Error'}';
+          _isDataLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Network/Unknown Error fetching cafeterias: $e');
+      setState(() {
+        _errorMessage =
+            'Connection Error. Could not load cafeterias. Details: $e';
+        _isDataLoading = false;
+      });
+    }
+  }
+
+  void _handleUnauthorizedAccess() async {
+    // Clear the API Key, forcing the user back to the ActivationScreen
+    await DeviceService.clearApiKey();
+
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const ErrorScreen(
+            message:
+                'Device authorization failed. Please reactivate with the Serial Number.',
+            redirectToRegistration: true,
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _saveSelectionAndProceed() async {
+    if (_selectedCafeteriaId == null) {
+      setState(() {
+        _errorMessage = 'Please select a cafeteria to continue.';
+      });
+      return;
+    }
+
+    final selectedCafeteria = _cafeterias.firstWhere(
+      (c) => c['id'] == _selectedCafeteriaId,
+      orElse: () => {'id': 0, 'name': 'Unknown'},
+    );
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kSelectedCafeteriaId, _selectedCafeteriaId!);
+    await prefs.setString(
+      _kSelectedCafeteriaName,
+      selectedCafeteria['name'] as String,
+    );
+
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const DeviceHome()),
+      );
+    }
+  }
+
+  Widget _buildStyledDropdown() {
+    final BorderSide borderSide = const BorderSide(
+      color: kPrimaryAccentColor,
+      width: 1,
+    );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      decoration: BoxDecoration(
+        color: kDarkBackgroundColor.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderSide.color, width: borderSide.width),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int>(
+          value: _selectedCafeteriaId,
+          hint: Row(
+            children: [
+              const Icon(
+                Icons.location_city_rounded,
+                color: kPrimaryAccentColor,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Select Active Cafeteria',
+                style: TextStyle(color: kSecondaryTextColor.withOpacity(0.8)),
+              ),
+            ],
+          ),
+          style: const TextStyle(color: kLightTextColor, fontSize: 16),
+          icon: const Icon(
+            Icons.arrow_drop_down,
+            color: kPrimaryAccentColor,
+            size: 30,
+          ),
+          isExpanded: true,
+          dropdownColor: kAppBarTopColor,
+
+          items: _cafeterias.map<DropdownMenuItem<int>>((
+            Map<String, dynamic> cafeteria,
+          ) {
+            return DropdownMenuItem<int>(
+              value: cafeteria['id'] as int,
+              child: Text(
+                cafeteria['name'] as String,
+                style: const TextStyle(color: kLightTextColor),
+              ),
+            );
+          }).toList(),
+
+          onChanged: (int? newValue) {
+            if (newValue != _selectedCafeteriaId || _errorMessage != null) {
+              setState(() {
+                _selectedCafeteriaId = newValue;
+                if (_errorMessage != null) _errorMessage = null;
+              });
+            }
+          },
+        ),
       ),
     );
   }
 
-  // --- Reusable Scan Option Card ---
-  Widget _buildScanOptionCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(24),
-      child: Ink(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          color: kPrimaryAccentColor.withOpacity(0.1),
-          border: Border.all(color: kPrimaryAccentColor, width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              // Using the more intense shadow you added
-              color: kPrimaryAccentColor.withOpacity(0.25),
-              blurRadius: 12,
-              spreadRadius: 3,
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 48, color: kPrimaryAccentColor),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: kLightTextColor,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Cafeteria Selection (Step 2 of 2)')),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Icon(
+                Icons.pin_drop_rounded,
+                size: 80,
+                color: kPrimaryAccentColor,
+              ),
+              const SizedBox(height: 30),
+              Text(
+                'Set Active Location',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  color: kLightTextColor,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Select the cafeteria this device will currently operate for.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: kSecondaryTextColor, fontSize: 16),
+              ),
+              const SizedBox(height: 30),
+
+              if (_isDataLoading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: CircularProgressIndicator(
+                      color: kPrimaryAccentColor,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
+                )
+              else if (_cafeterias.isEmpty)
+                Center(
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.refresh, color: kPrimaryAccentColor),
+                    label: const Text(
+                      'No cafeterias found. Tap to retry.',
+                      style: TextStyle(color: kPrimaryAccentColor),
+                    ),
+                    onPressed: _getCafeterias,
+                  ),
+                )
+              else
+                _buildStyledDropdown(),
+
+              const SizedBox(height: 30),
+
+              if (_errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 20.0),
+                  child: Text(
+                    _errorMessage!,
+                    textAlign: TextAlign.center,
                     style: const TextStyle(
-                      color: kSecondaryTextColor,
+                      color: Colors.redAccent,
                       fontSize: 14,
                     ),
                   ),
-                ],
-              ),
-            ),
-            const Icon(
-              Icons.arrow_forward_ios_rounded,
-              color: kSecondaryTextColor,
-              size: 18,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+                ),
 
-  // --- Sparkles (background decorations) ---
-  Widget _buildSparkle({
-    double? top,
-    double? bottom,
-    double? left,
-    double? right,
-  }) {
-    return Positioned(
-      top: top,
-      bottom: bottom,
-      left: left,
-      right: right,
-      child: Icon(
-        // Using the star icon you chose
-        Icons.star_rounded,
-        color: kPrimaryAccentColor.withOpacity(0.4),
-        size: 18,
-      ),
-    );
-  }
-
-  // --- Dotted corner pattern ---
-  Widget _buildDottedPattern({double? bottom, double? right}) {
-    return Positioned(
-      bottom: bottom,
-      right: right,
-      child: Opacity(
-        opacity: 0.3,
-        child: SizedBox(
-          width: 80,
-          height: 80,
-          child: GridView.builder(
-            itemCount: 64,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 8,
-              crossAxisSpacing: 5,
-              mainAxisSpacing: 5,
-            ),
-            itemBuilder: (context, index) => Container(
-              decoration: BoxDecoration(
-                color: kLightTextColor.withOpacity(0.1),
-                shape: BoxShape.circle,
+              ElevatedButton.icon(
+                onPressed: _isDataLoading || _selectedCafeteriaId == null
+                    ? null
+                    : _saveSelectionAndProceed,
+                icon: const Icon(Icons.save_rounded, size: 24),
+                label: const Padding(
+                  padding: EdgeInsets.symmetric(
+                    vertical: 12.0,
+                    horizontal: 16.0,
+                  ),
+                  child: Text(
+                    'Save Selection',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  foregroundColor: kDarkBackgroundColor,
+                  backgroundColor: kPrimaryAccentColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  elevation: 8,
+                  shadowColor: kPrimaryAccentColor.withOpacity(0.5),
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -259,24 +654,232 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-// --- Custom Clipper for Smooth Curved AppBar ---
-class AppBarClipper extends CustomClipper<Path> {
+/// --------------------------------------------------------
+/// 4. Device Home Screen
+/// --------------------------------------------------------
+class DeviceHome extends StatefulWidget {
+  const DeviceHome({super.key});
+
   @override
-  Path getClip(Size size) {
-    final path = Path();
-    path.lineTo(0, size.height - 30);
-    // This creates the nice dip in the center
-    path.quadraticBezierTo(
-      size.width / 2,
-      size.height + 30, // Control point is *below* the line
-      size.width,
-      size.height - 30, // End point
-    );
-    path.lineTo(size.width, 0);
-    path.close();
-    return path;
+  State<DeviceHome> createState() => _DeviceHomeState();
+}
+
+class _DeviceHomeState extends State<DeviceHome> {
+  String _activeCafeteriaName = 'Loading...';
+  int? _activeCafeteriaId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadActiveCafeteria();
+  }
+
+  Future<void> _loadActiveCafeteria() async {
+    final prefs = await SharedPreferences.getInstance();
+    final name =
+        prefs.getString(_kSelectedCafeteriaName) ?? 'Cafeteria Not Set';
+    final id = prefs.getInt(_kSelectedCafeteriaId);
+
+    setState(() {
+      _activeCafeteriaName = name;
+      _activeCafeteriaId = id;
+    });
+  }
+
+  Future<void> _resetDevice() async {
+    final prefs = await SharedPreferences.getInstance();
+    // This clears the API Key, forcing re-activation on next launch
+    await DeviceService.clearApiKey();
+    await prefs.remove(_kSelectedCafeteriaId);
+    await prefs.remove(_kSelectedCafeteriaName);
+
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const ActivationScreen()),
+      );
+    }
   }
 
   @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Device Active'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: _resetDevice,
+            tooltip: 'Deactivate Device (Requires SN re-entry)',
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const CafeteriaSelectionScreen(),
+                ),
+              );
+            },
+            tooltip: 'Change Cafeteria',
+          ),
+        ],
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.check_circle_outline,
+                size: 100,
+                color: kPrimaryAccentColor,
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Device Ready for Scanning',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: kLightTextColor,
+                ),
+              ),
+              const SizedBox(height: 40),
+              Card(
+                color: kAppBarTopColor,
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Currently Active Cafeteria:',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: kSecondaryTextColor,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _activeCafeteriaName,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w900,
+                          color: kPrimaryAccentColor,
+                        ),
+                      ),
+                      if (_activeCafeteriaId != null)
+                        Text(
+                          '(ID: $_activeCafeteriaId)',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: kSecondaryTextColor,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 40),
+
+              TextButton.icon(
+                icon: const Icon(
+                  Icons.location_on_rounded,
+                  color: kPrimaryAccentColor,
+                ),
+                label: const Text(
+                  'Change Location',
+                  style: TextStyle(color: kPrimaryAccentColor),
+                ),
+                onPressed: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const CafeteriaSelectionScreen(),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// --------------------------------------------------------
+/// 5. Error Screen
+/// --------------------------------------------------------
+class ErrorScreen extends StatelessWidget {
+  final String message;
+  final bool redirectToRegistration;
+
+  const ErrorScreen({
+    super.key,
+    required this.message,
+    this.redirectToRegistration = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Application Error')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.security_update_warning_rounded,
+                size: 80,
+                color: Colors.redAccent,
+              ),
+              const SizedBox(height: 30),
+              Text(
+                'Security/Initialization Failure',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: kLightTextColor,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.redAccent, fontSize: 16),
+              ),
+              const SizedBox(height: 30),
+              if (redirectToRegistration)
+                ElevatedButton.icon(
+                  onPressed: () {
+                    // Navigate to the one-time activation screen
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ActivationScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.cached),
+                  label: const Text('Go to Activation'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kPrimaryAccentColor,
+                    foregroundColor: kDarkBackgroundColor,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
