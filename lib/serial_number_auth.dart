@@ -40,29 +40,30 @@ class _SerialNumberAuthScreenState extends State<SerialNumberAuthScreen> {
     final serialNumber = _serialNumberController.text;
 
     try {
-      final uri = Uri.parse('$_baseUrl/api/device/verify');
+      final uri = Uri.parse('$_baseUrl/api/device/verify/$serialNumber');
+      print(uri);
 
-      final response = await http.post(
+      final response = await http.get(
         uri,
         headers: <String, String>{
           'Content-Type': 'application/json; charset=UTF-8',
         },
-        body: jsonEncode(<String, String>{"serial": serialNumber}),
       );
 
-      if (response.statusCode == 200) {
+      print(response.statusCode);
+
+      if (response.statusCode == 202) {
         final responseData = jsonDecode(response.body);
+        print(responseData["status"]);
+
+        print(responseData);
         // Assuming the backend returns a device_token on success
-        final deviceToken = responseData['device_token'] as String?;
 
-        if (deviceToken != null && deviceToken.isNotEmpty) {
+        if (responseData["status"] == "success") {
           // Success: Save registration state and token
-          await DeviceService.saveRegistrationData(
-            serialNumber: serialNumber,
-            deviceToken: deviceToken,
-          );
+          await DeviceService.saveRegistrationData(serialNumber: serialNumber);
 
-          // Step 3 & 5: Navigate replace to HomeScreen
+          //Step 3 & 5: Navigate replace to HomeScreen
           if (mounted) {
             Navigator.pushReplacement(
               context,
