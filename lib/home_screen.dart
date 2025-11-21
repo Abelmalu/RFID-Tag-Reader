@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'cafeteria_screen.dart';
 import 'gate_screen.dart';
+import 'registration_screen.dart';
 import 'serial_number_auth.dart';
 import 'device_service.dart';
 
@@ -69,7 +70,7 @@ class HomeScreen extends StatelessWidget {
                 title: 'Cafeteria Scan',
                 subtitle: 'Navigate to the food transaction processing.',
                 icon: Icons.restaurant_menu_rounded,
-                destination: const NfcReaderScreen(),
+                destination: const DeviceRegistrationScreen(),
               ),
               const SizedBox(height: 20),
               _buildModeButton(

@@ -45,12 +45,11 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
   // Initialize as null so the hint is displayed by default
   int? _selectedCafeteriaId;
   // -------------------------------
-
   bool _isLoading = false;
   String? _errorMessage;
   String? _successMessage;
 
-  static const String _baseUrl = 'http://192.168.100.169:8080';
+  static const String _baseUrl = 'http://127.0.0.1:8080';
 
   @override
   void initState() {
@@ -83,6 +82,8 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
   }
 
   Future<void> _registerDevice() async {
+    print("this is the id ");
+    print(_selectedCafeteriaId);
     // 1. Validation
     if (!_formKey.currentState!.validate()) {
       return;
@@ -91,7 +92,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
     // 2. Critical Check: Ensure a cafeteria has been selected (i.e., not null)
     if (_selectedCafeteriaId == null) {
       setState(() {
-        _errorMessage = 'Please select a cafeteria to register the device.';
+        _errorMessage = 'Please select a cafeteria you want to Scan .';
       });
       return;
     }
@@ -303,7 +304,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                 ),
                 const SizedBox(height: 30),
                 Text(
-                  'Register Your Device',
+                  'Choose Cafeteria',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     color: kLightTextColor,
@@ -311,23 +312,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                _buildTextField(
-                  controller: _nameController,
-                  labelText: 'Device Name',
-                  hintText: 'e.g., Cafeteria Scanner 01',
-                  icon: Icons.label_important_rounded,
-                  validator: (value) =>
-                      value!.isEmpty ? 'Please enter a device name' : null,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _serialNumberController,
-                  labelText: 'Serial Number',
-                  hintText: 'e.g., SN292',
-                  icon: Icons.code_rounded,
-                  validator: (value) =>
-                      value!.isEmpty ? 'Please enter a serial number' : null,
-                ),
+
                 const SizedBox(height: 16),
                 _buildStyledDropdown(),
                 const SizedBox(height: 30),
@@ -376,7 +361,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                       horizontal: 16.0,
                     ),
                     child: Text(
-                      _isLoading ? 'Registering...' : 'Register Device',
+                      _isLoading ? 'Choosing Cafeteria...' : 'Start Scanning',
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
