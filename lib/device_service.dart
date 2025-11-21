@@ -13,12 +13,9 @@ class DeviceService {
   }
 
   /// Step 3: Saves all registration data upon successful backend verification.
-  static Future<void> saveRegistrationData({
-    required String serialNumber,
-  }) async {
+  static Future<void> saveRegistrationData() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(kRegisteredKey, true);
-    await prefs.setString(kSerialNumberKey, serialNumber);
   }
 
   /// Optional: Clears all local data, forcing re-registration.

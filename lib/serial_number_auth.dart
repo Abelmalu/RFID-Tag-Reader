@@ -61,7 +61,7 @@ class _SerialNumberAuthScreenState extends State<SerialNumberAuthScreen> {
 
         if (responseData["status"] == "success") {
           // Success: Save registration state and token
-          await DeviceService.saveRegistrationData(serialNumber: serialNumber);
+          await DeviceService.saveRegistrationData();
 
           //Step 3 & 5: Navigate replace to HomeScreen
           if (mounted) {
