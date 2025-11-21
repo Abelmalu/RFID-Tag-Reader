@@ -10,7 +10,8 @@ const Color kPrimaryAccentColor = Color(0xFF00C6AE);
 const Color kLightTextColor = Colors.white;
 const Color kSecondaryTextColor = Colors.white70;
 const Color kAppBarTopColor = Color(0xFF15222E);
-const String _baseUrl = 'http://127.0.0.1:8080'; // <-- CHANGE THIS TO YOUR API
+const String _baseUrl =
+    'http://192.168.100.169:8080'; // <-- CHANGE THIS TO YOUR API
 
 class SerialNumberAuthScreen extends StatefulWidget {
   const SerialNumberAuthScreen({Key? key}) : super(key: key);

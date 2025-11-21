@@ -3,16 +3,15 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// import 'nfcReader.dart';
+import 'cafeteria_scanning_screen.dart';
+
 // --- Custom Colors/Constants (Defined for Runnability) ---
 const Color kDarkBackgroundColor = Color(0xFF1A2B3C);
 const Color kPrimaryAccentColor = Color(0xFF00C6AE);
 const Color kLightTextColor = Colors.white;
 const Color kSecondaryTextColor = Colors.white70;
 const Color kAppBarTopColor = Color(0xFF15222E);
-
-void main() {
-  runApp(const MyApp());
-}
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -22,7 +21,7 @@ class MyApp extends StatelessWidget {
     return const MaterialApp(home: DeviceRegistrationScreen());
   }
 }
-// --------------------------------------------------------
+// -----------------------------------------------
 
 class DeviceRegistrationScreen extends StatefulWidget {
   const DeviceRegistrationScreen({Key? key}) : super(key: key);
@@ -49,7 +48,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
   String? _errorMessage;
   String? _successMessage;
 
-  static const String _baseUrl = 'http://127.0.0.1:8080';
+  static const String _baseUrl = 'http://192.168.100.169:8080';
 
   @override
   void initState() {
@@ -81,7 +80,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
     }
   }
 
-  Future<void> _registerDevice() async {
+  Future<void> _startScanning(BuildContext ctx) async {
     print("this is the id ");
     print(_selectedCafeteriaId);
     // 1. Validation
@@ -103,58 +102,12 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
       _successMessage = null;
     });
 
-    try {
-      final String name = _nameController.text;
-      final String serialNumber = _serialNumberController.text;
-      final int cafeteriaId =
-          _selectedCafeteriaId!; // Non-null guaranteed by check above
-
-      final uri = Uri.parse('$_baseUrl/api/admin/register/device');
-
-      print('Attempting to register device to: $uri');
-      print(
-        'Payload: {name: $name, serial_number: $serialNumber, cafeteria_id: $cafeteriaId}',
-      );
-
-      final response = await http.post(
-        uri,
-        headers: <String, String>{
-          'Content-Type': 'application/json; charset=UTF-8',
-        },
-        body: jsonEncode(<String, dynamic>{
-          "name": name,
-          "serial_number": serialNumber,
-          "cafeteria_id": cafeteriaId,
-        }),
-      );
-
-      // 2. Handle Response
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final responseBody = jsonDecode(response.body);
-        setState(() {
-          _successMessage =
-              'Device registered successfully! Response: ${responseBody['message']}';
-          _errorMessage = null;
-        });
-        print('Registration Success: ${response.body}');
-      } else {
-        print('API Error Status ${response.statusCode}: ${response.body}');
-        final errorJson = jsonDecode(response.body);
-        setState(() {
-          _errorMessage = errorJson['message'];
-        });
-      }
-    } catch (e) {
-      print('Network/Unknown Error: $e');
-      setState(() {
-        _errorMessage =
-            'Connection Error. Check your Wi-Fi, IP address, and firewall. Error details: $e';
-      });
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
+    Navigator.push(
+      ctx,
+      MaterialPageRoute(
+        builder: (ctx) => NfcReaderScreen(cafeteriaId: _selectedCafeteriaId!),
+      ),
+    );
   }
 
   @override
@@ -282,7 +235,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
       backgroundColor: kDarkBackgroundColor,
       appBar: AppBar(
         title: const Text(
-          'Device Registration',
+          'Cafeteria Selection',
           style: TextStyle(color: kLightTextColor),
         ),
         backgroundColor: kAppBarTopColor,
@@ -344,7 +297,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                     ),
                   ),
                 ElevatedButton.icon(
-                  onPressed: _isLoading ? null : _registerDevice,
+                  onPressed: _isLoading ? null : () => _startScanning(context),
                   icon: _isLoading
                       ? const SizedBox(
                           width: 20,

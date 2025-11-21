@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'cafeteria_screen.dart';
+import 'cafeteria_scanning_screen.dart';
 import 'gate_screen.dart';
-import 'registration_screen.dart';
+import 'start_scanning.dart';
 import 'serial_number_auth.dart';
 import 'device_service.dart';
 

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 //import 'main.dart';
-import 'registration_screen.dart';
+import 'start_scanning.dart';
 
 // Import your custom colors from main.dart
 const Color kDarkBackgroundColor = Color(0xFF1A2B3C);

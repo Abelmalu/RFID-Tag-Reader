@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:nfc_manager/nfc_manager.dart';
 import 'package:nfc_manager/nfc_manager.dart';
 import 'package:nfc_manager/nfc_manager_android.dart';
@@ -13,18 +15,13 @@ const Color kLightTextColor = Colors.white;
 const Color kSecondaryTextColor = Colors.white70;
 const Color kErrorColor = Color(0xFFE57373); // Light red for errors/not found
 
-void main() {
-  // Wrapping with MaterialApp to make it runnable
-  runApp(
-    const MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: NfcReaderScreen(),
-    ),
-  );
-}
-
 class NfcReaderScreen extends StatefulWidget {
-  const NfcReaderScreen({Key? key}) : super(key: key);
+  final int cafeteriaId;
+
+  const NfcReaderScreen({
+    super.key, // Standard Flutter convention
+    required this.cafeteriaId,
+  });
 
   @override
   State<NfcReaderScreen> createState() => _NfcReaderScreenState();
@@ -37,6 +34,7 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
   Map<String, String>? _studentData;
   bool _isNfcAvailable = true;
   bool _isScanning = true;
+  static final String _baseUrl = " http://192.168.100.169:8080";
 
   // Animation Controllers
   late AnimationController _popController;
@@ -53,7 +51,7 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
     },
     {
       'id': '79:68:DB:9B',
-      'full_name': 'MASRESHA SMITH',
+      'full_name': 'MASRESHA Kasa',
       'batch': 'Batch 2025',
       'department': 'Information Technology',
     },
@@ -78,6 +76,7 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
 
   @override
   void initState() {
+    print(widget.cafeteriaId);
     super.initState();
     _checkNfcAvailability();
     _startNfcSession();
@@ -131,15 +130,27 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
             final tagUid = rawUidBytes != null
                 ? _bytesToHexString(rawUidBytes)
                 : null;
-
+            // print(tagUid);
+            print("hellow from uid");
             // 2. Look up student data
             Map<String, String>? student;
             if (tagUid != null) {
               try {
                 student = students.firstWhere((s) => s['id'] == tagUid);
+                print(tagUid);
+                print("object");
+                // final url = Uri.parse(
+                //   "$_baseUrl/api/mealaccess/$tagUid/${widget.cafeteriaId}",
+                // );
+
+                // final response = await http.get(url);
+                // final decode = jsonDecode(response.body);
+                // print("decoded data from meal accss");
+                // print(decode);
               } catch (e) {
                 // Student not found, student remains null
-                student = null;
+                print("printing the error for the api call");
+                print(e);
               }
             }
 
@@ -150,7 +161,7 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
                 _studentData = student;
                 _isScanning = false;
                 // Stop animations when a result is displayed
-                _popController.stop();
+                // _popController.stop();
                 _orbitController.stop();
               });
             }
@@ -419,25 +430,6 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
         children: [
           ScanResultCard(tagUid: _tagUid, studentData: _studentData),
           const SizedBox(height: 30),
-          ElevatedButton(
-            onPressed: _resetScanning,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: kPrimaryAccentColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              padding: const EdgeInsets.symmetric(vertical: 18),
-              elevation: 8,
-            ),
-            child: const Text(
-              'Scan New Tag',
-              style: TextStyle(
-                color: kDarkBackgroundColor,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
         ],
       ),
     );
