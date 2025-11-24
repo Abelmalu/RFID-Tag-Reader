@@ -34,7 +34,7 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
   Map<String, String>? _studentData;
   bool _isNfcAvailable = true;
   bool _isScanning = true;
-  static final String _baseUrl = " http://192.168.100.169:8080";
+  static final String _baseUrl = "http://192.168.100.169:8080";
 
   // Animation Controllers
   late AnimationController _popController;
@@ -76,8 +76,9 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
 
   @override
   void initState() {
-    print(widget.cafeteriaId);
     super.initState();
+    print(widget.cafeteriaId);
+    print("printing in initState");
     _checkNfcAvailability();
     _startNfcSession();
 
@@ -111,7 +112,7 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
   void _startNfcSession() {
     // Check if NFC is available before starting the session
     if (!_isNfcAvailable) return;
-
+    print("in the start NFC method");
     NfcManager.instance
         .startSession(
           pollingOptions: {
@@ -136,17 +137,18 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
             Map<String, String>? student;
             if (tagUid != null) {
               try {
-                student = students.firstWhere((s) => s['id'] == tagUid);
+                // student = students.firstWhere((s) => s['id'] == tagUid);
                 print(tagUid);
                 print("object");
-                // final url = Uri.parse(
-                //   "$_baseUrl/api/mealaccess/$tagUid/${widget.cafeteriaId}",
-                // );
+                final urlMealAccess = Uri.parse(
+                  "$_baseUrl/api/mealaccess/$tagUid/${widget.cafeteriaId}",
+                );
 
-                // final response = await http.get(url);
-                // final decode = jsonDecode(response.body);
-                // print("decoded data from meal accss");
-                // print(decode);
+                final response = await http.get(urlMealAccess);
+                print("decoded data from meal accss");
+                final decode = jsonDecode(response.body);
+
+                print(decode);
               } catch (e) {
                 // Student not found, student remains null
                 print("printing the error for the api call");
@@ -161,7 +163,7 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
                 _studentData = student;
                 _isScanning = false;
                 // Stop animations when a result is displayed
-                // _popController.stop();
+                //_popController.stop();
                 _orbitController.stop();
               });
             }
