@@ -22,7 +22,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Device Kiosk App',
+      title: 'Woldia University',
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: kDarkBackgroundColor,

@@ -31,7 +31,7 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
     with TickerProviderStateMixin {
   // State for NFC results
   String? _tagUid;
-  Map<String, String>? _studentData;
+  Map<String, dynamic>? _studentData;
   bool _isNfcAvailable = true;
   bool _isScanning = true;
   static final String _baseUrl = "http://192.168.100.169:8080";
@@ -42,7 +42,7 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
   late AnimationController _orbitController;
 
   // Mock Student Data
-  final List<Map<String, String>> students = [
+  final List<Map<String, dynamic>> students = [
     {
       'id': 'C6:65:D3:EA',
       'full_name': 'ABEBE TASEW',
@@ -134,7 +134,7 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
             // print(tagUid);
             print("hellow from uid");
             // 2. Look up student data
-            Map<String, String>? student;
+            Map<String, dynamic>? student;
             if (tagUid != null) {
               try {
                 // student = students.firstWhere((s) => s['id'] == tagUid);
@@ -147,8 +147,11 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
                 final response = await http.get(urlMealAccess);
                 print("decoded data from meal accss");
                 final decode = jsonDecode(response.body);
+                // student = decode as Map<String, dynamic>?;
 
                 print(decode);
+
+                //print(student?["first_name"]);
               } catch (e) {
                 // Student not found, student remains null
                 print("printing the error for the api call");
@@ -161,7 +164,7 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
               setState(() {
                 _tagUid = tagUid;
                 _studentData = student;
-                _isScanning = false;
+                // _isScanning = false;
                 // Stop animations when a result is displayed
                 //_popController.stop();
                 _orbitController.stop();
@@ -424,6 +427,11 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
   }
 
   Widget _buildResultView() {
+    if (_studentData?["status"] == "error") {
+      return _studentData?["message"] == "student not found"
+          ? Text(_studentData?["message"])
+          : Text(_studentData?["message"]);
+    }
     return Padding(
       padding: const EdgeInsets.all(24.0),
       child: Column(
@@ -442,7 +450,7 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
 
 class ScanResultCard extends StatelessWidget {
   final String? tagUid;
-  final Map<String, String>? studentData;
+  final Map<String, dynamic>? studentData;
 
   const ScanResultCard({
     required this.tagUid,
@@ -496,17 +504,17 @@ class ScanResultCard extends StatelessWidget {
           _buildInfoRow('UID:', tagUid ?? 'Unknown Tag', kSecondaryTextColor),
           const SizedBox(height: 10),
           if (found) ...[
-            _buildInfoRow('Name:', studentData!['full_name']!, kLightTextColor),
+            _buildInfoRow('Name:', studentData?['first_name'], kLightTextColor),
             const SizedBox(height: 10),
             _buildInfoRow(
               'Department:',
-              studentData!['department']!,
+              studentData?['middle_name'],
               kSecondaryTextColor,
             ),
             const SizedBox(height: 10),
             _buildInfoRow(
               'Batch:',
-              studentData!['batch']!,
+              (studentData?['last_name']),
               kSecondaryTextColor,
             ),
           ] else
