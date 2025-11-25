@@ -3,9 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:nfc_manager/nfc_manager.dart';
-import 'package:nfc_manager/nfc_manager.dart';
 import 'package:nfc_manager/nfc_manager_android.dart';
 import 'dart:typed_data';
+import 'package:audioplayers/audioplayers.dart';
 
 // Color Palette
 const Color kDarkBackgroundColor = Color(0xFF1A2B3C);
@@ -35,33 +35,12 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
   bool _isNfcAvailable = true;
   bool _isScanning = true;
   static final String _baseUrl = "http://192.168.100.169:8080";
+  late AudioPlayer _audioPlayer;
 
   // Animation Controllers
   late AnimationController _popController;
   late Animation<double> _scaleAnimation;
   late AnimationController _orbitController;
-
-  // Mock Student Data
-  final List<Map<String, dynamic>> students = [
-    {
-      'id': 'C6:65:D3:EA',
-      'full_name': 'ABEBE TASEW',
-      'batch': 'Batch 2025',
-      'department': 'Computer Science',
-    },
-    {
-      'id': '79:68:DB:9B',
-      'full_name': 'MASRESHA Kasa',
-      'batch': 'Batch 2025',
-      'department': 'Information Technology',
-    },
-    {
-      'id': 'F9:CE:9D:9B',
-      'full_name': 'TOMAS SEFIW',
-      'batch': 'Batch 2024',
-      'department': 'Software Engineering',
-    },
-  ];
 
   // Utility function to convert tag UID bytes to Hex string
   String _bytesToHexString(Uint8List bytes) {
@@ -72,13 +51,31 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
         .toUpperCase();
   }
 
+  // Helper function to play sound based on result
+  void _playAccessSound(String? message) async {
+    if (message == null) return;
+
+    String assetPath;
+    // Check the 'message' field from the API response
+    if (message == "Granted") {
+      assetPath = 'audio/access_granted.mp3';
+    } else {
+      assetPath = 'audio/access_denied.mp3';
+    }
+
+    // Play the audio asset
+    await _audioPlayer.play(AssetSource(assetPath));
+  }
+
   // --- NFC Management ---
 
   @override
   void initState() {
     super.initState();
-    print(widget.cafeteriaId);
-    print("printing in initState");
+
+    ///Initialize Audio Player
+    _audioPlayer = AudioPlayer();
+
     _checkNfcAvailability();
     _startNfcSession();
 
@@ -148,6 +145,15 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
                 print("decoded data from meal accss");
                 final decode = jsonDecode(response.body);
                 student = decode as Map<String, dynamic>?;
+                final accessMessage = student?['message'];
+
+                print("Printing access denied");
+                print(accessMessage);
+
+                // Play the appropriate sound based on the message
+                if (accessMessage != null) {
+                  _playAccessSound(accessMessage);
+                }
 
                 print(decode);
 
@@ -470,12 +476,18 @@ class ScanResultCard extends StatelessWidget {
         color: kAppBarColor,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: found ? kPrimaryAccentColor : kErrorColor,
+          color: studentData?['message'] == "Granted"
+              ? kPrimaryAccentColor
+              : kErrorColor,
           width: 2,
         ),
         boxShadow: [
           BoxShadow(
-            color: (found ? kPrimaryAccentColor : kErrorColor).withOpacity(0.3),
+            color:
+                (studentData?['message'] == "Granted"
+                        ? kPrimaryAccentColor
+                        : kErrorColor)
+                    .withOpacity(0.3),
             blurRadius: 15,
             spreadRadius: 2,
           ),
@@ -487,15 +499,22 @@ class ScanResultCard extends StatelessWidget {
           Row(
             children: [
               Icon(
-                found ? Icons.check_circle_rounded : Icons.warning_rounded,
-                color: found ? kPrimaryAccentColor : kErrorColor,
+                studentData?['message'] == "Granted"
+                    ? Icons.check_circle_rounded
+                    : Icons.warning_rounded,
+                color: studentData?['message'] == "Granted"
+                    ? kPrimaryAccentColor
+                    : kErrorColor,
                 size: 36,
               ),
               const SizedBox(width: 16),
+              //ACCESS DENIED OR GRANTED
               Text(
-                found ? 'Tag Data Found' : 'Record Not Found',
+                studentData?['message'],
                 style: TextStyle(
-                  color: found ? kPrimaryAccentColor : kErrorColor,
+                  color: studentData?['message'] == "Granted"
+                      ? kPrimaryAccentColor
+                      : kErrorColor,
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                 ),
@@ -520,7 +539,7 @@ class ScanResultCard extends StatelessWidget {
             const SizedBox(height: 10),
             _buildInfoRow(
               'Batch:',
-              (studentData?['message']),
+              (studentData?['batch']),
               kSecondaryTextColor,
             ),
           ] else
