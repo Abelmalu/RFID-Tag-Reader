@@ -147,11 +147,13 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
                 final response = await http.get(urlMealAccess);
                 print("decoded data from meal accss");
                 final decode = jsonDecode(response.body);
-                // student = decode as Map<String, dynamic>?;
+                student = decode as Map<String, dynamic>?;
 
                 print(decode);
 
-                //print(student?["first_name"]);
+                if (decode?["status"] == "error") {
+                  print("error");
+                }
               } catch (e) {
                 // Student not found, student remains null
                 print("printing the error for the api call");
@@ -164,7 +166,7 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
               setState(() {
                 _tagUid = tagUid;
                 _studentData = student;
-                // _isScanning = false;
+                _isScanning = false;
                 // Stop animations when a result is displayed
                 //_popController.stop();
                 _orbitController.stop();
@@ -427,10 +429,10 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
   }
 
   Widget _buildResultView() {
+    print("printing student data");
+    print(_studentData);
     if (_studentData?["status"] == "error") {
-      return _studentData?["message"] == "student not found"
-          ? Text(_studentData?["message"])
-          : Text(_studentData?["message"]);
+      return Text(_studentData?["message"]);
     }
     return Padding(
       padding: const EdgeInsets.all(24.0),
@@ -504,17 +506,21 @@ class ScanResultCard extends StatelessWidget {
           _buildInfoRow('UID:', tagUid ?? 'Unknown Tag', kSecondaryTextColor),
           const SizedBox(height: 10),
           if (found) ...[
-            _buildInfoRow('Name:', studentData?['first_name'], kLightTextColor),
+            _buildInfoRow(
+              'Name:',
+              studentData?['data']['first_name'],
+              kLightTextColor,
+            ),
             const SizedBox(height: 10),
             _buildInfoRow(
               'Department:',
-              studentData?['middle_name'],
+              studentData?['data']['middle_name'],
               kSecondaryTextColor,
             ),
             const SizedBox(height: 10),
             _buildInfoRow(
               'Batch:',
-              (studentData?['last_name']),
+              (studentData?['message']),
               kSecondaryTextColor,
             ),
           ] else
