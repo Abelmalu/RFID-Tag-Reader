@@ -102,10 +102,16 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
       _successMessage = null;
     });
 
+    setState(() {
+      _isLoading = false;
+    });
+
     Navigator.push(
       ctx,
       MaterialPageRoute(
-        builder: (ctx) => NfcReaderScreen(cafeteriaId: _selectedCafeteriaId!),
+        builder: (ctx) {
+          return NfcReaderScreen(cafeteriaId: _selectedCafeteriaId!);
+        },
       ),
     );
   }

@@ -521,6 +521,8 @@ class ScanResultCard extends StatelessWidget {
               ),
             ],
           ),
+          Text(studentData?['data']['image_url']),
+          Image.network(studentData?['data']['image_url'], fit: BoxFit.cover),
           const Divider(height: 30, color: kSecondaryTextColor),
           _buildInfoRow('UID:', tagUid ?? 'Unknown Tag', kSecondaryTextColor),
           const SizedBox(height: 10),

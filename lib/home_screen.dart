@@ -32,7 +32,7 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Home Screen (Select Mode)'),
+        title: const Text('Home '),
         backgroundColor: kAppBarTopColor,
         actions: [
           IconButton(
