@@ -9,7 +9,6 @@ const Color kPrimaryAccentColor = Color(0xFF00C6AE);
 const Color kLightTextColor = Colors.white;
 const Color kAppBarTopColor = Color(0xFF15222E);
 //------------------
-
 void main() {
   // Must initialize widgets binding before accessing SharedPreferences
   WidgetsFlutterBinding.ensureInitialized();

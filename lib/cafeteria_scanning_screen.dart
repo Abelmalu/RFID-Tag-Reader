@@ -34,7 +34,7 @@ class _NfcReaderScreenState extends State<NfcReaderScreen>
   Map<String, dynamic>? _studentData;
   bool _isNfcAvailable = true;
   bool _isScanning = true;
-  static final String _baseUrl = "http://192.168.100.169:8080";
+  static final String _baseUrl = "http://18.206.59.15:8080";
   late AudioPlayer _audioPlayer;
 
   // Animation Controllers

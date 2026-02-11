@@ -48,7 +48,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
   String? _errorMessage;
   String? _successMessage;
 
-  static const String _baseUrl = 'http://192.168.100.169:8080';
+  static const String _baseUrl = 'http://18.206.59.15:8080';
 
   @override
   void initState() {
